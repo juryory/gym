@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f5ef" />
+    <title>练练 · 动作与训练笔记</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="练练首页">
+        <span class="brand-mark">练</span>
+        <span>练练</span>
+      </a>
+      <div class="header-meta">
+        <span class="pulse"></span>
+        <span id="dataStatus">正在载入动作库</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">你的动作资料库</p>
+        <h1>今天，练什么？</h1>
+        <p class="hero-copy">选器械，找动作。把每一次进步，留在动作旁边。</p>
+      </section>
+
+      <section class="workspace" aria-label="动作选择与笔记">
+        <aside class="finder">
+          <div class="section-heading">
+            <div>
+              <span class="step-number">01</span>
+              <h2>选择器械</h2>
+            </div>
+            <button class="text-button" id="resetButton" type="button">重置</button>
+          </div>
+
+          <div class="equipment-list" id="equipmentList" aria-label="器械列表">
+            <div class="skeleton wide"></div>
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+          </div>
+
+          <div class="body-part-section">
+            <div class="filter-subheading">
+              <span class="step-number">02</span>
+              <h2>选择训练部位</h2>
+            </div>
+            <div class="body-part-list" id="bodyPartList" aria-label="训练部位列表">
+              <div class="skeleton"></div>
+              <div class="skeleton"></div>
+              <div class="skeleton"></div>
+            </div>
+          </div>
+
+          <div class="search-wrap">
+            <label for="searchInput">搜索动作</label>
+            <div class="search-field">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+              <input id="searchInput" type="search" placeholder="试试：深蹲、划船、推举…" autocomplete="off" />
+            </div>
+          </div>
+
+        </aside>
+
+        <section class="catalog" aria-label="动作目录">
+          <div class="catalog-toolbar">
+            <div class="results-head">
+              <span class="step-number">03</span>
+              <h2>选择动作</h2>
+            </div>
+            <div class="catalog-summary">
+              <span class="result-count" id="resultCount">—</span>
+              <span>点击卡片查看动作与笔记</span>
+            </div>
+          </div>
+          <div class="exercise-grid" id="exerciseList" aria-live="polite">
+            <div class="loading-state"><span class="spinner"></span>动作数据正在热身…</div>
+          </div>
+        </section>
+      </section>
+
+      <div class="detail-overlay" id="detailOverlay" hidden>
+        <article class="detail" id="detailPanel" role="dialog" aria-modal="true" aria-labelledby="exerciseName">
+          <div class="detail-content" id="detailContent" hidden>
+            <div class="detail-topline">
+              <span class="detail-index" id="detailIndex">#0001</span>
+              <div class="detail-actions">
+                <button class="favorite-button" id="favoriteButton" type="button" aria-label="收藏动作" title="收藏动作">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5S4 16 4 9.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 2.5c0 6.5-8 11-8 11Z"></path></svg>
+                </button>
+                <button class="modal-close" id="closeDetailButton" type="button" aria-label="关闭详情">×</button>
+              </div>
+            </div>
+            <div class="movement-intro">
+              <div class="media-frame">
+                <img id="exerciseMedia" alt="" />
+                <span class="media-badge">动作示范</span>
+              </div>
+              <div class="movement-copy">
+                <p class="eyebrow" id="bodyPart">—</p>
+                <h2 id="exerciseName">—</h2>
+                <p class="original-name" id="exerciseEnglishName">—</p>
+                <div class="tags" id="tags"></div>
+              </div>
+            </div>
+
+            <section class="instructions">
+              <div class="section-title-row">
+                <h3>怎么做</h3>
+                <span>动作说明</span>
+              </div>
+              <ol id="instructionList"></ol>
+            </section>
+
+            <section class="notes-card">
+              <div class="notes-heading">
+                <div>
+                  <span class="step-number">04</span>
+                  <h3>我的训练笔记</h3>
+                </div>
+                <span class="save-status" id="saveStatus">自动保存</span>
+              </div>
+              <textarea id="noteInput" placeholder="记录重量、组数、动作感受，或下次想调整的地方…" maxlength="3000"></textarea>
+              <div class="note-footer">
+                <span id="characterCount">0 / 3000</span>
+                <button id="clearNoteButton" class="text-button danger" type="button">清空笔记</button>
+              </div>
+            </section>
+          </div>
+        </article>
+      </div>
+    </main>
+
+    <footer>
+      <span>练练 · 让训练留下痕迹</span>
+      <a href="https://github.com/hasaneyldrm/exercises-dataset" target="_blank" rel="noreferrer">数据来源与版权说明 ↗</a>
+    </footer>
+    <script src="app.js" defer></script>
+  </body>
+</html>
