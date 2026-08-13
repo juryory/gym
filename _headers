@@ -1,0 +1,21 @@
+# Cloudflare Pages 的缓存规则。文件名自带哈希（0001-2gPfomN.webp），
+# 内容变了文件名也会变，所以可以放心永久缓存——回访和翻页都不再重新下载。
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 数据会随上游更新重新生成，缓存一小时，同时允许用旧数据先渲染再后台更新
+/data/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+# 页面本身必须每次校验，否则改了代码用户还拿着旧版
+/
+  Cache-Control: public, max-age=0, must-revalidate
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/app.js
+  Cache-Control: public, max-age=0, must-revalidate
+/store.js
+  Cache-Control: public, max-age=0, must-revalidate
+/styles.css
+  Cache-Control: public, max-age=0, must-revalidate
