@@ -1,5 +1,7 @@
-const DATA_URL = "https://cdn.jsdelivr.net/gh/hasaneyldrm/exercises-dataset@main/data/exercises.json";
-const MEDIA_ROOT = "https://cdn.jsdelivr.net/gh/hasaneyldrm/exercises-dataset@main/";
+const DATA_URL = "data/exercises.json";
+// 素材默认同源加载。若改用对象存储（腾讯云 COS 等），把 assets/ 目录整个上传到
+// 存储桶根目录，然后把这里换成桶域名，例如 "https://your-bucket.cos.ap-guangzhou.myqcloud.com/"。
+const MEDIA_ROOT = "assets/";
 const NOTE_PREFIX = "lianlian-note:";
 const FAVORITES_KEY = "lianlian-favorites";
 const MAX_VISIBLE_RESULTS = 160;
@@ -238,6 +240,11 @@ function selectExercise(id) {
   elements.detailContent.hidden = false;
   document.body.classList.add("modal-open");
   elements.detailIndex.textContent = `#${item.id}`;
+  // 动画是 WebP，老浏览器放不出来时退回静态缩略图
+  elements.exerciseMedia.onerror = () => {
+    elements.exerciseMedia.onerror = null;
+    elements.exerciseMedia.src = mediaUrl(item.image);
+  };
   elements.exerciseMedia.src = mediaUrl(item.gif_url || item.image);
   elements.exerciseMedia.alt = `${item.name} 动作示范`;
   elements.bodyPart.textContent = localName(item.body_part, bodyPartNames);
