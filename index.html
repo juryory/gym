@@ -13,6 +13,11 @@
         <span class="brand-mark">练</span>
         <span>练练</span>
       </a>
+      <nav class="view-nav" id="viewNav" aria-label="切换视图">
+        <button class="view-tab active" data-view="library" type="button">动作库</button>
+        <button class="view-tab" data-view="log" type="button">训练记录</button>
+        <button class="view-tab" data-view="plans" type="button">训练计划</button>
+      </nav>
       <div class="header-meta">
         <span class="pulse"></span>
         <span id="dataStatus">正在载入动作库</span>
@@ -20,6 +25,7 @@
     </header>
 
     <main>
+      <section class="view" id="viewLibrary">
       <section class="hero">
         <p class="eyebrow">你的动作资料库</p>
         <h1>今天，练什么？</h1>
@@ -80,6 +86,35 @@
           </div>
         </section>
       </section>
+      </section>
+
+      <section class="view" id="viewLog" hidden>
+        <div class="view-head">
+          <div>
+            <p class="eyebrow">训练记录</p>
+            <h1>练了什么</h1>
+            <p class="hero-copy">每次上课记下动作和组数，日子久了就是你自己的训练史。</p>
+          </div>
+          <div class="view-actions">
+            <button class="primary-button" id="newSessionButton" type="button">记录一次训练</button>
+          </div>
+        </div>
+        <div class="session-list" id="sessionList"></div>
+      </section>
+
+      <section class="view" id="viewPlans" hidden>
+        <div class="view-head">
+          <div>
+            <p class="eyebrow">训练计划</p>
+            <h1>自己练的时候</h1>
+            <p class="hero-copy">把练过的内容存成计划，没有私教的时候照着走。</p>
+          </div>
+          <div class="view-actions">
+            <button class="primary-button" id="newPlanButton" type="button">新建计划</button>
+          </div>
+        </div>
+        <div class="plan-list" id="planList"></div>
+      </section>
 
       <div class="detail-overlay" id="detailOverlay" hidden>
         <article class="detail" id="detailPanel" role="dialog" aria-modal="true" aria-labelledby="exerciseName">
@@ -114,20 +149,28 @@
               <ol id="instructionList"></ol>
             </section>
 
+            <section class="last-performance" id="lastPerformance" hidden></section>
+
             <section class="notes-card">
               <div class="notes-heading">
                 <div>
                   <span class="step-number">04</span>
-                  <h3>我的训练笔记</h3>
+                  <h3>动作技巧</h3>
                 </div>
-                <span class="save-status" id="saveStatus">自动保存</span>
+                <span class="save-status" id="saveStatus">教练教的要点记这里</span>
               </div>
-              <textarea id="noteInput" placeholder="记录重量、组数、动作感受，或下次想调整的地方…" maxlength="3000"></textarea>
+              <ul class="tip-list" id="tipList"></ul>
+              <textarea id="tipInput" placeholder="例如：下蹲时膝盖跟着脚尖方向走，别内扣；核心先绷住再下去…" maxlength="1000"></textarea>
               <div class="note-footer">
-                <span id="characterCount">0 / 3000</span>
-                <button id="clearNoteButton" class="text-button danger" type="button">清空笔记</button>
+                <input class="tip-source" id="tipSource" type="text" placeholder="谁教的（选填）" maxlength="30" />
+                <button id="addTipButton" class="text-button" type="button">记下这条</button>
               </div>
             </section>
+
+            <div class="detail-cta">
+              <button class="primary-button" id="addToSessionButton" type="button">加入训练记录</button>
+              <span class="cta-hint" id="addToSessionHint"></span>
+            </div>
           </div>
         </article>
       </div>
@@ -135,9 +178,15 @@
 
     <footer>
       <span>练练 · 让训练留下痕迹</span>
+      <span class="footer-tools">
+        <button class="text-button" id="exportButton" type="button">导出备份</button>
+        <button class="text-button" id="importButton" type="button">导入备份</button>
+        <input id="importFile" type="file" accept="application/json,.json" hidden />
+      </span>
       <span class="footer-credit">动作图片与动画 © <a href="https://gymvisual.com/" target="_blank" rel="noreferrer">Gym visual</a></span>
       <a href="https://github.com/hasaneyldrm/exercises-dataset" target="_blank" rel="noreferrer">数据来源与版权说明 ↗</a>
     </footer>
+    <script src="store.js" defer></script>
     <script src="app.js" defer></script>
   </body>
 </html>

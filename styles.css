@@ -203,3 +203,107 @@ footer a { color: inherit; }
   .eyebrow { margin-bottom: 10px; }
   footer { flex-direction: column; gap: 10px; }
 }
+
+/* ==== 训练记录与计划 ==== */
+
+.view-nav { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(24,32,25,.06); }
+.view-tab { border: 0; border-radius: 999px; padding: 7px 15px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; transition: background .18s, color .18s; }
+.view-tab:hover { color: var(--ink); }
+.view-tab.active { background: var(--ink); color: #fff; }
+
+.view-head { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; justify-content: space-between; padding: 52px 8px 30px; }
+.view-head h1 { margin: 0 0 10px; font-size: clamp(34px, 5vw, 58px); line-height: 1.04; letter-spacing: -.05em; }
+.view-head .hero-copy { margin: 0; }
+.primary-button { border: 0; border-radius: 11px; padding: 11px 20px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: background .18s, opacity .18s; }
+.primary-button:hover { background: #2f3b30; }
+.primary-button:disabled { opacity: .45; cursor: default; }
+
+.empty-state { display: grid; gap: 8px; padding: 46px 28px; border: 1px dashed var(--line); border-radius: 18px; background: var(--panel); text-align: center; }
+.empty-state strong { font-size: 15px; }
+.empty-state span { color: var(--muted); font-size: 12px; }
+
+.session-list, .plan-list { display: grid; gap: 12px; }
+.session-card, .plan-card { border: 1px solid var(--line); border-radius: 18px; background: var(--panel); overflow: hidden; }
+.session-card.open, .plan-card.open { border-color: var(--ink); box-shadow: var(--shadow); }
+.session-head, .plan-head { width: 100%; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 18px 22px; border: 0; background: transparent; cursor: pointer; text-align: left; }
+.session-date { font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
+.plan-name { flex: 1; font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
+.session-kind { padding: 4px 9px; border-radius: 7px; background: #edefe7; color: #4f584f; font-size: 11px; }
+.session-kind.coach { background: var(--acid); color: var(--acid-dark); }
+.session-summary, .plan-summary { flex: 1; color: var(--muted); font-size: 12px; }
+.session-caret { color: var(--muted); font-size: 11px; }
+
+.session-body, .plan-body { display: grid; gap: 18px; padding: 4px 22px 22px; border-top: 1px solid var(--line); }
+/* grid/flex 子项的 min-width 默认是 auto，input 的固有宽度会把整条链撑破容器 */
+.session-body > *, .plan-body > *, .entry, .set-list, .set-row, .plan-entry { min-width: 0; }
+.session-fields { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 18px; }
+.session-fields label, .session-feel, .plan-field { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.session-fields input, .session-fields select, .session-feel textarea, .plan-field input, .plan-field textarea {
+  border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; outline: 0; background: #fff; color: var(--ink); font-size: 13px; font-weight: 400;
+}
+.session-fields input:focus, .session-fields select:focus, .session-feel textarea:focus, .plan-field input:focus, .plan-field textarea:focus { border-color: var(--ink); }
+.session-feel textarea, .plan-field textarea { resize: vertical; line-height: 1.6; }
+
+.entry-list { display: grid; gap: 10px; }
+.entry { padding: 14px 16px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
+.entry-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.entry-head strong { font-size: 13px; }
+.entry-last { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.entry-empty { margin: 0; color: var(--muted); font-size: 12px; }
+.set-list { display: grid; gap: 7px; margin: 12px 0 8px; }
+.set-row { display: flex; align-items: center; gap: 8px; }
+.set-index { width: 20px; color: var(--orange); font-size: 11px; font-weight: 700; }
+.set-row input { flex: 1; width: 74px; max-width: 110px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: 0; background: #fff; font-size: 13px; }
+.set-row input:focus { border-color: var(--ink); }
+.set-x { color: var(--muted); font-size: 11px; }
+.set-remove { width: 26px; height: 26px; border: 0; border-radius: 7px; background: #f0f1eb; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; }
+.set-remove:hover { background: var(--orange); color: #fff; }
+.session-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+.plan-entries { display: grid; gap: 8px; }
+.plan-entry { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.plan-entry strong { flex: 1; font-size: 13px; }
+.plan-target { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+.plan-target input { width: 58px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; outline: 0; font-size: 13px; }
+
+.picker-banner { position: sticky; top: 12px; z-index: 12; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin: 16px 8px 0; padding: 14px 18px; border-radius: 14px; background: var(--ink); color: #fff; font-size: 12px; box-shadow: var(--shadow); }
+.picker-banner strong { color: var(--acid); }
+.picker-banner .primary-button { background: var(--acid); color: var(--acid-dark); }
+.picker-banner .primary-button:hover { background: #d5fa5e; }
+.exercise-card.just-added { outline: 2px solid var(--acid); outline-offset: 2px; }
+
+/* ==== 详情弹层里的技巧 ==== */
+
+.last-performance { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; margin-bottom: 18px; padding: 13px 16px; border-radius: 12px; background: #edefe7; }
+.lp-label { color: var(--muted); font-size: 11px; font-weight: 700; }
+.lp-sets { font-size: 13px; font-weight: 600; }
+
+.tip-list { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; list-style: none; }
+.tip { padding: 12px 14px; border-radius: 11px; background: #232c24; }
+.tip p { margin: 0 0 8px; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+.tip-meta { display: flex; align-items: center; justify-content: space-between; color: #849084; font-size: 10px; }
+.tip-meta .text-button { color: #849084; }
+.tip-meta .text-button:hover { color: var(--orange); }
+.tip.empty { color: #849084; font-size: 12px; line-height: 1.6; background: transparent; border: 1px dashed #3f4940; }
+.notes-card .tip-source { flex: 1; max-width: 190px; border: 1px solid #3f4940; border-radius: 8px; padding: 7px 10px; outline: 0; background: #232c24; color: #fff; font-size: 11px; }
+.notes-card .tip-source:focus { border-color: var(--acid); }
+.notes-card .note-footer { gap: 12px; align-items: center; }
+.notes-card .note-footer .text-button { color: var(--acid); font-weight: 600; }
+
+.detail-cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 20px; }
+.cta-hint { color: var(--muted); font-size: 11px; }
+.footer-tools { display: flex; gap: 12px; }
+
+@media (max-width: 560px) {
+  .view-nav { order: 3; width: 100%; justify-content: space-between; }
+  .view-head { padding: 32px 4px 22px; }
+  .session-head, .plan-head { padding: 15px 16px; }
+  .session-body, .plan-body { padding: 4px 16px 18px; }
+  .session-fields { flex-direction: column; }
+  .session-fields label { width: 100%; }
+  .set-row input { max-width: none; }
+  .plan-target input { flex: 1; min-width: 0; }
+  .session-tools { flex-direction: column; align-items: stretch; }
+  .session-tools button { width: 100%; }
+  .plan-entry strong { width: 100%; flex: none; }
+}

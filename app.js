@@ -2,8 +2,6 @@ const DATA_URL = "data/exercises.json";
 // 素材默认同源加载。若改用对象存储（腾讯云 COS 等），把 assets/ 目录整个上传到
 // 存储桶根目录，然后把这里换成桶域名，例如 "https://your-bucket.cos.ap-guangzhou.myqcloud.com/"。
 const MEDIA_ROOT = "assets/";
-const NOTE_PREFIX = "lianlian-note:";
-const FAVORITES_KEY = "lianlian-favorites";
 const MAX_VISIBLE_RESULTS = 160;
 
 const equipmentNames = {
@@ -131,7 +129,12 @@ function translateExerciseName(name) {
   return translated || "训练动作";
 }
 
-const state = { exercises: [], filtered: [], equipment: "all", bodyPart: "all", selectedId: null, search: "", favorites: new Set(JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]")) };
+const state = {
+  exercises: [], byId: new Map(), filtered: [], equipment: "all", bodyPart: "all", selectedId: null, search: "",
+  view: "library", openSessionId: null, openPlanId: null,
+  // 挑选模式：从训练或计划点「添加动作」后进入，此时点卡片直接加入而不是打开详情
+  picker: null,
+};
 const $ = (selector) => document.querySelector(selector);
 const elements = {
   dataStatus: $("#dataStatus"), equipmentList: $("#equipmentList"), bodyPartList: $("#bodyPartList"), exerciseList: $("#exerciseList"),
@@ -139,12 +142,22 @@ const elements = {
   detailOverlay: $("#detailOverlay"), detailContent: $("#detailContent"), detailIndex: $("#detailIndex"),
   exerciseMedia: $("#exerciseMedia"), bodyPart: $("#bodyPart"), exerciseName: $("#exerciseName"),
   exerciseEnglishName: $("#exerciseEnglishName"),
-  tags: $("#tags"), instructionList: $("#instructionList"), noteInput: $("#noteInput"),
-  saveStatus: $("#saveStatus"), characterCount: $("#characterCount"), clearNoteButton: $("#clearNoteButton"),
-  favoriteButton: $("#favoriteButton"), closeDetailButton: $("#closeDetailButton"),
+  tags: $("#tags"), instructionList: $("#instructionList"),
+  saveStatus: $("#saveStatus"), favoriteButton: $("#favoriteButton"), closeDetailButton: $("#closeDetailButton"),
+  viewNav: $("#viewNav"), views: { library: $("#viewLibrary"), log: $("#viewLog"), plans: $("#viewPlans") },
+  sessionList: $("#sessionList"), planList: $("#planList"),
+  newSessionButton: $("#newSessionButton"), newPlanButton: $("#newPlanButton"),
+  tipList: $("#tipList"), tipInput: $("#tipInput"), tipSource: $("#tipSource"), addTipButton: $("#addTipButton"),
+  lastPerformance: $("#lastPerformance"),
+  addToSessionButton: $("#addToSessionButton"), addToSessionHint: $("#addToSessionHint"),
+  exportButton: $("#exportButton"), importButton: $("#importButton"), importFile: $("#importFile"),
 };
 
 const mediaUrl = (path) => `${MEDIA_ROOT}${String(path || "").replace(/^\.\//, "")}`;
+// 技巧、教练名这些是用户输入，阶段二还要展示别人写的内容，拼进 innerHTML 前一律转义
+const escapes = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => escapes[char]);
+const exerciseName = (id) => state.byId.get(id)?.localizedName || `动作 ${id}`;
 const localName = (value, dictionary) => dictionary[value?.toLowerCase()] || value || "未知";
 const debounce = (fn, wait = 180) => { let timer; return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), wait); }; };
 
@@ -153,11 +166,14 @@ async function loadExercises() {
     const response = await fetch(DATA_URL);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     state.exercises = (await response.json()).map((item) => ({ ...item, localizedName: translateExerciseName(item.name) }));
+    state.byId = new Map(state.exercises.map((item) => [item.id, item]));
     elements.dataStatus.textContent = `${state.exercises.length.toLocaleString("zh-CN")} 个动作已就绪`;
     $(".pulse").style.background = "var(--acid-dark)";
     renderEquipment();
     renderBodyParts();
     applyFilters();
+    renderSessions();
+    renderPlans();
   } catch (error) {
     elements.dataStatus.textContent = "动作库载入失败";
     elements.exerciseList.innerHTML = `<div class="no-results"><strong>暂时无法读取动作数据</strong><span>请检查网络后刷新页面</span></div>`;
@@ -209,7 +225,9 @@ function applyFilters() {
 }
 
 function renderExerciseList() {
-  elements.resultCount.textContent = `${state.filtered.length} 个动作`;
+  elements.resultCount.textContent = state.picker
+    ? `${state.filtered.length} 个动作 · 点击即可加入`
+    : `${state.filtered.length} 个动作`;
   if (!state.filtered.length) {
     elements.exerciseList.innerHTML = `<div class="no-results"><strong>没有找到相符动作</strong><span>换个器械或搜索词试试</span></div>`;
     return;
@@ -258,9 +276,47 @@ function selectExercise(id) {
     || item.instruction_steps?.en?.filter(Boolean)
     || splitInstructions(item.instructions?.zh || item.instructions?.en || "暂无动作说明");
   elements.instructionList.innerHTML = steps.map((step) => `<li>${step}</li>`).join("");
-  elements.noteInput.value = localStorage.getItem(NOTE_PREFIX + id) || "";
-  updateCharacterCount();
+  renderTips(id);
+  renderLastPerformance(id);
+  updateAddToSessionHint();
   updateFavoriteButton();
+}
+
+function renderTips(exerciseId) {
+  const tips = store.tipsFor(exerciseId);
+  elements.tipList.innerHTML = tips.length
+    ? tips.map((tip) => `
+      <li class="tip" data-tip="${tip.id}">
+        <p>${esc(tip.text)}</p>
+        <div class="tip-meta">
+          <span>${tip.source ? esc(tip.source) + " · " : ""}${tip.createdAt.slice(0, 10)}</span>
+          <button class="text-button danger" data-action="delete-tip" type="button">删除</button>
+        </div>
+      </li>`).join("")
+    : `<li class="tip empty">还没有记录。上完课把教练纠正你的点写下来，下次自己练就有据可依。</li>`;
+}
+
+function renderLastPerformance(exerciseId) {
+  const last = store.lastPerformance(exerciseId);
+  elements.lastPerformance.hidden = !last;
+  if (!last) return;
+  const sets = last.sets.map((set) => `${set.weight || "—"}kg × ${set.reps || "—"}`).join("，");
+  elements.lastPerformance.innerHTML = `<span class="lp-label">上次 ${last.date}</span><span class="lp-sets">${esc(sets)}</span>`;
+}
+
+/* 加入训练默认落到「今天」那次记录上，没有就现建一个，省掉先去建记录再回来找动作 */
+function todaySession() {
+  return store.sessions().find((session) => session.date === storeHelpers.today());
+}
+
+function updateAddToSessionHint() {
+  const session = todaySession();
+  const inSession = session?.entries.some((entry) => entry.exerciseId === state.selectedId);
+  elements.addToSessionButton.textContent = inSession ? "已在今天的训练里" : "加入训练记录";
+  elements.addToSessionButton.disabled = Boolean(inSession);
+  elements.addToSessionHint.textContent = session
+    ? `${session.date}${session.kind === "coach" ? " 私教课" : " 自主训练"}`
+    : "会新建一次今天的训练";
 }
 
 function closeDetail() {
@@ -273,31 +329,202 @@ function splitInstructions(text) {
   return text.split(/(?<=[。！？.!?])\s*/).map((step) => step.trim()).filter(Boolean);
 }
 
-function saveNote() {
-  if (!state.selectedId) return;
-  const key = NOTE_PREFIX + state.selectedId;
-  const value = elements.noteInput.value;
-  value.trim() ? localStorage.setItem(key, value) : localStorage.removeItem(key);
-  elements.saveStatus.textContent = "已保存";
+function flashStatus(text) {
+  elements.saveStatus.textContent = text;
   elements.saveStatus.classList.add("saved");
-  setTimeout(() => { elements.saveStatus.textContent = "自动保存"; elements.saveStatus.classList.remove("saved"); }, 1200);
+  setTimeout(() => { elements.saveStatus.textContent = "教练教的要点记这里"; elements.saveStatus.classList.remove("saved"); }, 1400);
 }
 
-function updateCharacterCount() { elements.characterCount.textContent = `${elements.noteInput.value.length} / 3000`; }
 function updateFavoriteButton() {
-  const active = state.favorites.has(state.selectedId);
+  const active = store.isFavorite(state.selectedId);
   elements.favoriteButton.classList.toggle("active", active);
   elements.favoriteButton.setAttribute("aria-label", active ? "取消收藏" : "收藏动作");
 }
 
+/* ---------- 视图切换 ---------- */
+
+function setView(view) {
+  state.view = view;
+  Object.entries(elements.views).forEach(([name, node]) => { node.hidden = name !== view; });
+  elements.viewNav.querySelectorAll(".view-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
+  if (view === "log") renderSessions();
+  if (view === "plans") renderPlans();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function startPicking(type, id) {
+  state.picker = { type, id };
+  setView("library");
+  renderPickerBanner();
+  renderExerciseList();
+}
+
+function stopPicking() {
+  const picker = state.picker;
+  state.picker = null;
+  renderPickerBanner();
+  renderExerciseList();
+  if (picker) setView(picker.type === "plan" ? "plans" : "log");
+}
+
+function renderPickerBanner() {
+  let banner = $("#pickerBanner");
+  if (!state.picker) { banner?.remove(); return; }
+  const target = state.picker.type === "plan" ? store.plan(state.picker.id) : store.session(state.picker.id);
+  if (!target) { state.picker = null; banner?.remove(); return; }
+  const label = state.picker.type === "plan" ? target.name : `${target.date} 的训练`;
+  const count = target.entries.length;
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "pickerBanner";
+    banner.className = "picker-banner";
+    elements.views.library.prepend(banner);
+  }
+  banner.innerHTML = `
+    <span>正在为「${esc(label)}」添加动作 · 已选 <strong>${count}</strong> 个</span>
+    <button class="primary-button" data-action="done" type="button">完成</button>`;
+}
+
+/* ---------- 训练记录 ---------- */
+
+function renderSessions() {
+  const sessions = store.sessions();
+  if (!sessions.length) {
+    elements.sessionList.innerHTML = `<div class="empty-state">
+      <strong>还没有训练记录</strong>
+      <span>上完私教课，把做过的动作和组数记下来。练得越久，这里越值钱。</span>
+    </div>`;
+    return;
+  }
+  elements.sessionList.innerHTML = sessions.map(renderSessionCard).join("");
+}
+
+function renderSessionCard(session) {
+  const open = session.id === state.openSessionId;
+  const totalSets = session.entries.reduce((sum, entry) => sum + entry.sets.length, 0);
+  const summary = session.entries.length
+    ? `${session.entries.length} 个动作 · ${totalSets} 组`
+    : "还没有动作";
+  return `
+    <article class="session-card ${open ? "open" : ""}" data-session="${session.id}">
+      <button class="session-head" data-action="toggle-session" type="button">
+        <span class="session-date">${session.date}</span>
+        <span class="session-kind ${session.kind}">${session.kind === "coach" ? "私教课" : "自主训练"}</span>
+        <span class="session-summary">${summary}</span>
+        <span class="session-caret">${open ? "收起" : "展开"}</span>
+      </button>
+      ${open ? renderSessionBody(session) : ""}
+    </article>`;
+}
+
+function renderSessionBody(session) {
+  return `
+    <div class="session-body">
+      <div class="session-fields">
+        <label>日期<input type="date" data-field="date" value="${session.date}" /></label>
+        <label>类型
+          <select data-field="kind">
+            <option value="coach" ${session.kind === "coach" ? "selected" : ""}>私教课</option>
+            <option value="self" ${session.kind === "self" ? "selected" : ""}>自主训练</option>
+          </select>
+        </label>
+        <label>教练<input type="text" data-field="coach" value="${esc(session.coach)}" placeholder="选填" maxlength="30" /></label>
+      </div>
+      <label class="session-feel">这次的感受
+        <textarea data-field="feel" rows="2" maxlength="500" placeholder="哪里酸、哪里没感觉、下次想调整什么…">${esc(session.feel)}</textarea>
+      </label>
+      <div class="entry-list">${session.entries.map(renderEntry).join("") || `<p class="entry-empty">还没有动作，点下面的按钮从动作库里挑。</p>`}</div>
+      <div class="session-tools">
+        <button class="primary-button" data-action="pick-exercise" type="button">添加动作</button>
+        <button class="text-button" data-action="save-as-plan" type="button">存成训练计划</button>
+        <button class="text-button danger" data-action="delete-session" type="button">删除这次记录</button>
+      </div>
+    </div>`;
+}
+
+function renderEntry(entry) {
+  const last = store.lastPerformance(entry.exerciseId, state.openSessionId);
+  return `
+    <div class="entry" data-entry="${entry.id}">
+      <div class="entry-head">
+        <strong>${esc(exerciseName(entry.exerciseId))}</strong>
+        <button class="text-button danger" data-action="remove-entry" type="button">移除</button>
+      </div>
+      ${last ? `<p class="entry-last">上次 ${last.date}：${esc(last.sets.map((set) => `${set.weight || "—"}×${set.reps || "—"}`).join(" "))}</p>` : ""}
+      <div class="set-list">
+        ${entry.sets.map((set, index) => `
+          <div class="set-row" data-set="${set.id}">
+            <span class="set-index">${index + 1}</span>
+            <input type="number" inputmode="decimal" step="0.5" min="0" data-field="weight" value="${esc(set.weight)}" placeholder="kg" aria-label="第${index + 1}组重量" />
+            <span class="set-x">kg ×</span>
+            <input type="number" inputmode="numeric" step="1" min="0" data-field="reps" value="${esc(set.reps)}" placeholder="次" aria-label="第${index + 1}组次数" />
+            <button class="set-remove" data-action="remove-set" type="button" aria-label="删除这一组">×</button>
+          </div>`).join("")}
+      </div>
+      <button class="text-button" data-action="add-set" type="button">+ 加一组</button>
+    </div>`;
+}
+
+/* ---------- 训练计划 ---------- */
+
+function renderPlans() {
+  const plans = store.plans();
+  if (!plans.length) {
+    elements.planList.innerHTML = `<div class="empty-state">
+      <strong>还没有训练计划</strong>
+      <span>可以直接新建，也可以在某次训练记录里点「存成训练计划」。</span>
+    </div>`;
+    return;
+  }
+  elements.planList.innerHTML = plans.map(renderPlanCard).join("");
+}
+
+function renderPlanCard(plan) {
+  const open = plan.id === state.openPlanId;
+  return `
+    <article class="plan-card ${open ? "open" : ""}" data-plan="${plan.id}">
+      <button class="plan-head" data-action="toggle-plan" type="button">
+        <span class="plan-name">${esc(plan.name)}</span>
+        <span class="plan-summary">${plan.entries.length} 个动作</span>
+        <span class="session-caret">${open ? "收起" : "展开"}</span>
+      </button>
+      ${open ? `
+        <div class="plan-body">
+          <label class="plan-field">计划名称<input type="text" data-field="name" value="${esc(plan.name)}" maxlength="40" /></label>
+          <label class="plan-field">说明<textarea data-field="note" rows="2" maxlength="300" placeholder="练哪些部位、注意什么…">${esc(plan.note)}</textarea></label>
+          <div class="plan-entries">
+            ${plan.entries.map((entry) => `
+              <div class="plan-entry" data-entry="${entry.id}">
+                <strong>${esc(exerciseName(entry.exerciseId))}</strong>
+                <span class="plan-target">
+                  <input type="number" min="1" step="1" data-field="sets" value="${esc(entry.sets)}" aria-label="组数" /> 组 ×
+                  <input type="number" min="1" step="1" data-field="reps" value="${esc(entry.reps)}" aria-label="次数" /> 次
+                </span>
+                <button class="text-button danger" data-action="remove-plan-entry" type="button">移除</button>
+              </div>`).join("") || `<p class="entry-empty">还没有动作。</p>`}
+          </div>
+          <div class="session-tools">
+            <button class="primary-button" data-action="start-plan" type="button">按这个计划开练</button>
+            <button class="text-button" data-action="pick-exercise" type="button">添加动作</button>
+            <button class="text-button danger" data-action="delete-plan" type="button">删除计划</button>
+          </div>
+        </div>` : ""}
+    </article>`;
+}
+
 elements.exerciseList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-id]");
-  if (button) selectExercise(button.dataset.id);
+  if (!button) return;
+  const exerciseId = button.dataset.id;
+  if (!state.picker) return selectExercise(exerciseId);
+  // 挑选模式下连点多个动作，不打断节奏
+  if (state.picker.type === "plan") store.addPlanEntry(state.picker.id, exerciseId);
+  else store.addEntry(state.picker.id, exerciseId);
+  button.classList.add("just-added");
+  setTimeout(() => button.classList.remove("just-added"), 600);
+  renderPickerBanner();
 });
 elements.searchInput.addEventListener("input", debounce((event) => { state.search = event.target.value; applyFilters(); }));
-elements.noteInput.addEventListener("input", () => { updateCharacterCount(); debouncedSave(); });
-const debouncedSave = debounce(saveNote, 450);
-elements.clearNoteButton.addEventListener("click", () => { elements.noteInput.value = ""; updateCharacterCount(); saveNote(); elements.noteInput.focus(); });
 elements.resetButton.addEventListener("click", () => {
   state.equipment = "all"; state.bodyPart = "all"; state.search = ""; elements.searchInput.value = "";
   elements.equipmentList.querySelectorAll(".equipment-chip").forEach((chip) => chip.classList.toggle("active", chip.dataset.equipment === "all"));
@@ -306,12 +533,167 @@ elements.resetButton.addEventListener("click", () => {
 });
 elements.favoriteButton.addEventListener("click", () => {
   if (!state.selectedId) return;
-  state.favorites.has(state.selectedId) ? state.favorites.delete(state.selectedId) : state.favorites.add(state.selectedId);
-  localStorage.setItem(FAVORITES_KEY, JSON.stringify([...state.favorites]));
+  store.toggleFavorite(state.selectedId);
   updateFavoriteButton();
 });
 elements.closeDetailButton.addEventListener("click", closeDetail);
 elements.detailOverlay.addEventListener("click", (event) => { if (event.target === elements.detailOverlay) closeDetail(); });
 document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !elements.detailOverlay.hidden) closeDetail(); });
+
+/* ---- 详情弹层里的技巧与加入训练 ---- */
+
+elements.addTipButton.addEventListener("click", () => {
+  const text = elements.tipInput.value.trim();
+  if (!text || !state.selectedId) return;
+  store.addTip(state.selectedId, text, elements.tipSource.value);
+  elements.tipInput.value = "";
+  renderTips(state.selectedId);
+  flashStatus("已记下");
+});
+elements.tipList.addEventListener("click", (event) => {
+  const button = event.target.closest('[data-action="delete-tip"]');
+  if (!button) return;
+  store.deleteTip(button.closest("[data-tip]").dataset.tip);
+  renderTips(state.selectedId);
+});
+elements.addToSessionButton.addEventListener("click", () => {
+  if (!state.selectedId) return;
+  const session = todaySession() || store.createSession();
+  store.addEntry(session.id, state.selectedId);
+  state.openSessionId = session.id;
+  updateAddToSessionHint();
+  renderSessions();
+  flashStatus("已加入训练");
+});
+
+/* ---- 视图切换与挑选模式 ---- */
+
+elements.viewNav.addEventListener("click", (event) => {
+  const tab = event.target.closest("[data-view]");
+  if (tab) setView(tab.dataset.view);
+});
+elements.views.library.addEventListener("click", (event) => {
+  if (event.target.closest('#pickerBanner [data-action="done"]')) stopPicking();
+});
+elements.newSessionButton.addEventListener("click", () => {
+  const session = store.createSession();
+  state.openSessionId = session.id;
+  renderSessions();
+});
+elements.newPlanButton.addEventListener("click", () => {
+  const plan = store.createPlan();
+  state.openPlanId = plan.id;
+  renderPlans();
+});
+
+/* ---- 训练记录的编辑 ---- */
+
+elements.sessionList.addEventListener("click", (event) => {
+  const card = event.target.closest("[data-session]");
+  if (!card) return;
+  const sessionId = card.dataset.session;
+  const action = event.target.closest("[data-action]")?.dataset.action;
+  const entryId = event.target.closest("[data-entry]")?.dataset.entry;
+  const setId = event.target.closest("[data-set]")?.dataset.set;
+  if (action === "toggle-session") {
+    state.openSessionId = state.openSessionId === sessionId ? null : sessionId;
+    renderSessions();
+  } else if (action === "add-set") {
+    store.addSet(sessionId, entryId);
+    renderSessions();
+  } else if (action === "remove-set") {
+    store.removeSet(sessionId, entryId, setId);
+    renderSessions();
+  } else if (action === "remove-entry") {
+    store.removeEntry(sessionId, entryId);
+    renderSessions();
+  } else if (action === "pick-exercise") {
+    startPicking("session", sessionId);
+  } else if (action === "save-as-plan") {
+    const plan = store.planFromSession(sessionId);
+    state.openPlanId = plan.id;
+    setView("plans");
+  } else if (action === "delete-session") {
+    if (!confirm("删除这次训练记录？该操作无法撤销。")) return;
+    store.deleteSession(sessionId);
+    if (state.openSessionId === sessionId) state.openSessionId = null;
+    renderSessions();
+  }
+});
+
+/* 输入类改动只写库不重渲染，否则每敲一个字都会重建 DOM、光标会跳走 */
+elements.sessionList.addEventListener("input", (event) => {
+  const field = event.target.dataset.field;
+  if (!field) return;
+  const sessionId = event.target.closest("[data-session]").dataset.session;
+  const entryId = event.target.closest("[data-entry]")?.dataset.entry;
+  const setId = event.target.closest("[data-set]")?.dataset.set;
+  if (setId) store.updateSet(sessionId, entryId, setId, { [field]: event.target.value });
+  else store.updateSession(sessionId, { [field]: event.target.value });
+});
+// 日期和类型改完需要重排顺序、刷新标签，等失焦再渲染
+elements.sessionList.addEventListener("change", (event) => {
+  if (["date", "kind"].includes(event.target.dataset.field)) renderSessions();
+});
+
+/* ---- 训练计划的编辑 ---- */
+
+elements.planList.addEventListener("click", (event) => {
+  const card = event.target.closest("[data-plan]");
+  if (!card) return;
+  const planId = card.dataset.plan;
+  const action = event.target.closest("[data-action]")?.dataset.action;
+  const entryId = event.target.closest("[data-entry]")?.dataset.entry;
+  if (action === "toggle-plan") {
+    state.openPlanId = state.openPlanId === planId ? null : planId;
+    renderPlans();
+  } else if (action === "remove-plan-entry") {
+    store.removePlanEntry(planId, entryId);
+    renderPlans();
+  } else if (action === "pick-exercise") {
+    startPicking("plan", planId);
+  } else if (action === "start-plan") {
+    const session = store.startFromPlan(planId);
+    state.openSessionId = session.id;
+    setView("log");
+  } else if (action === "delete-plan") {
+    if (!confirm("删除这个训练计划？该操作无法撤销。")) return;
+    store.deletePlan(planId);
+    if (state.openPlanId === planId) state.openPlanId = null;
+    renderPlans();
+  }
+});
+elements.planList.addEventListener("input", (event) => {
+  const field = event.target.dataset.field;
+  if (!field) return;
+  const planId = event.target.closest("[data-plan]").dataset.plan;
+  const entryId = event.target.closest("[data-entry]")?.dataset.entry;
+  if (entryId) store.updatePlanEntry(planId, entryId, { [field]: event.target.value });
+  else store.updatePlan(planId, { [field]: event.target.value });
+});
+
+/* ---- 备份 ---- */
+
+elements.exportButton.addEventListener("click", () => {
+  const url = URL.createObjectURL(store.exportBlob());
+  const link = Object.assign(document.createElement("a"), { href: url, download: `练练备份-${storeHelpers.today()}.json` });
+  link.click();
+  URL.revokeObjectURL(url);
+});
+elements.importButton.addEventListener("click", () => elements.importFile.click());
+elements.importFile.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const counts = store.importJSON(await file.text());
+    renderSessions();
+    renderPlans();
+    alert(`导入完成：${counts.sessions} 次训练、${counts.tips} 条技巧、${counts.plans} 个计划。`);
+  } catch (error) {
+    alert(`导入失败：${error.message}`);
+  }
+  event.target.value = "";
+});
+window.addEventListener("store:error", (event) => alert(event.detail));
 
 loadExercises();
