@@ -21,8 +21,35 @@
       <div class="header-meta">
         <span class="pulse"></span>
         <span id="dataStatus">正在载入动作库</span>
+        <button class="account-chip" id="accountButton" type="button">登录</button>
       </div>
     </header>
+
+    <div class="auth-overlay" id="authOverlay" hidden>
+      <div class="auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+        <div class="auth-head">
+          <h2 id="authTitle">登录</h2>
+          <button class="modal-close" id="authClose" type="button" aria-label="关闭">×</button>
+        </div>
+        <p class="auth-intro" id="authIntro">登录后训练记录会同步到云端，换设备也不会丢。</p>
+        <form id="authForm">
+          <label>邮箱<input id="authEmail" type="email" autocomplete="email" required /></label>
+          <label class="auth-name" id="authNameField" hidden>昵称<input id="authName" type="text" maxlength="24" placeholder="别人看到的名字" /></label>
+          <label>密码<input id="authPassword" type="password" autocomplete="current-password" minlength="8" required /></label>
+          <p class="auth-error" id="authError" hidden></p>
+          <button class="primary-button" id="authSubmit" type="submit">登录</button>
+        </form>
+        <p class="auth-switch">
+          <span id="authSwitchText">还没有账号？</span>
+          <button class="text-button" id="authSwitch" type="button">注册一个</button>
+        </p>
+        <div class="auth-signed-in" id="authSignedIn" hidden>
+          <p>已登录为 <strong id="authUserName">—</strong></p>
+          <p class="auth-sync-line" id="authSyncLine">同步正常</p>
+          <button class="text-button danger" id="authLogout" type="button">退出登录</button>
+        </div>
+      </div>
+    </div>
 
     <main>
       <section class="view" id="viewLibrary">
@@ -160,6 +187,7 @@
                 <span class="save-status" id="saveStatus">教练教的要点记这里</span>
               </div>
               <ul class="tip-list" id="tipList"></ul>
+              <div class="shared-tips" id="sharedTips" hidden></div>
               <textarea id="tipInput" placeholder="例如：下蹲时膝盖跟着脚尖方向走，别内扣；核心先绷住再下去…" maxlength="1000"></textarea>
               <div class="note-footer">
                 <input class="tip-source" id="tipSource" type="text" placeholder="谁教的（选填）" maxlength="30" />

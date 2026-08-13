@@ -43,13 +43,111 @@ python -m http.server 4173
 老版本的「每个动作一段自由文本」会在首次加载时自动转成 `tips`，旧的 localStorage 键
 原样保留作为兜底，不会删除。
 
-## 后续规划
+## 后端：账号与云同步
 
-计划加入账号与云同步，让记录不再锁在单个浏览器里，并支持把训练计划和动作技巧选择性
-公开给其他用户。技术选型已定：Cloudflare Workers + D1，邮箱密码登录。
+`server/` 是一个**零 npm 依赖**的 Node 服务，只用内置模块（`node:sqlite`、`node:crypto`、
+`node:http`），不需要 `npm install`，也不需要编译工具链。只提供 `/api/*`，静态文件仍由
+Nginx 直接伺服。
 
-静态资源和数据继续走现在的国内路径，只有 API 走 Workers——接口传输量是几 KB 的 JSON，
-而素材有 50 MB，两者对网络质量的要求不在一个量级。
+需要 **Node 22.5 以上**（`node:sqlite` 从这个版本开始可用）。
+
+```bash
+cd server
+DB_FILE=/www/lianlian-data/gym.db PORT=3000 node server.js
+```
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `PORT` | `3000` | 监听端口 |
+| `BIND` | `127.0.0.1` | 只监听本机，由 Nginx 反代，不直接暴露公网 |
+| `DB_FILE` | 仓库外的 `../lianlian-data/gym.db` | SQLite 文件路径 |
+
+> **数据库文件绝不能放在网站根目录里。** 网站根目录就是仓库根目录，放进去意味着
+> `https://你的域名/data/gym.db` 能被任何人下载，里面是所有用户的密码哈希和训练记录。
+> 默认路径已经指到仓库外，改 `DB_FILE` 时别改回来。
+
+### 接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/auth/register` | 注册，返回 httpOnly cookie |
+| POST | `/api/auth/login` | 登录，连续失败 8 次后限速 15 分钟 |
+| POST | `/api/auth/logout` | 退出 |
+| GET | `/api/me` | 当前用户，未登录返回 `null` |
+| POST | `/api/sync` | 双向同步，见下 |
+| GET | `/api/public/tips?exerciseId=` | 某个动作下所有人公开的技巧 |
+| GET | `/api/public/plans` | 公开的训练计划 |
+
+### 同步怎么工作
+
+客户端推本地改动、拉服务端改动，两边都按 `updatedAt` **最后写入胜出**。删除写**墓碑**
+（`deletedAt`）而不是真删——否则在手机上删掉的记录，下次从平板同步回来会复活。
+
+**写入永远是本地优先**：填一组「45kg × 6」直接落 `localStorage` 并立刻返回，同步在后台
+跑。器械房信号差是常态，记一组不该等网络，断网也能照常用。
+
+隐私边界在服务端强制，不信任客户端：训练记录（含个人重量数据）无论客户端传什么
+`visibility` 都会被改写成 `private`，只有技巧和计划能公开。
+
+## 部署（宝塔面板）
+
+### 1. 静态站
+
+站点根目录指向仓库。可以先只部署静态部分——**后端没起来时整站照常可用**，只是没有
+登录和同步。
+
+### 2. Node 后端
+
+宝塔「软件商店」装 **Node 版本管理器**，选 22.5 以上的版本。然后「网站 → Node 项目 →
+添加 Node 项目」：
+
+- 项目目录：仓库的 `server/` 子目录
+- 启动方式：`node server.js`（或 `npm start`）
+- 端口：`3000`
+- 环境变量：`DB_FILE=/www/lianlian-data/gym.db`
+
+数据库目录要**建在网站根目录之外**，并给运行用户写权限。
+
+### 3. 反向代理
+
+「网站 → 设置 → 反向代理」，添加：
+
+- 代理名称：`api`
+- 目标 URL：`http://127.0.0.1:3000`
+- 发送域名：`$host`
+- 代理目录：`/api`
+
+登录 cookie 的 `Secure` 标志依赖 `X-Forwarded-Proto`，确认反代配置里有这一行
+（宝塔默认模板通常带，没有就手动加）：
+
+```nginx
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+### 4. HTTPS
+
+「网站 → SSL」签一张 Let's Encrypt 证书并开启强制 HTTPS。登录令牌走 cookie，明文 HTTP
+下会被中间人截取。
+
+### 5. 备份
+
+数据库就是一个文件，宝塔「计划任务」加一条 shell 定时备份即可。SQLite 开了 WAL，
+**热备份要用 `.backup` 而不是直接 `cp`**，否则可能拷到不一致的状态：
+
+```bash
+sqlite3 /www/lianlian-data/gym.db ".backup '/www/backup/gym-$(date +\%F).db'"
+```
+
+## 素材放腾讯云 COS
+
+把 `assets/` 整个目录传到存储桶根目录（保持 `images/`、`videos/` 两级结构），然后改
+`app.js` 顶部这一行：
+
+```js
+const MEDIA_ROOT = "https://your-bucket.cos.ap-guangzhou.myqcloud.com/";
+```
+
+其余代码无需改动。桶要设为公有读，并在跨域设置里允许你的站点域名。
 
 ## 数据与素材
 

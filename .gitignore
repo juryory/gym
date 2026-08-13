@@ -1,0 +1,9 @@
+# SQLite 数据库绝不能进仓库：里面是用户密码哈希和全部训练记录。
+# 正常情况下它落在仓库外（lianlian-data/），这里是防止手滑用 DB_FILE 指到仓库内。
+*.db
+*.db-wal
+*.db-shm
+data/gym.db*
+
+node_modules/
+.DS_Store

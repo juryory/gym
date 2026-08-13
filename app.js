@@ -151,6 +151,12 @@ const elements = {
   lastPerformance: $("#lastPerformance"),
   addToSessionButton: $("#addToSessionButton"), addToSessionHint: $("#addToSessionHint"),
   exportButton: $("#exportButton"), importButton: $("#importButton"), importFile: $("#importFile"),
+  accountButton: $("#accountButton"), authOverlay: $("#authOverlay"), authClose: $("#authClose"),
+  authForm: $("#authForm"), authTitle: $("#authTitle"), authIntro: $("#authIntro"), authEmail: $("#authEmail"),
+  authName: $("#authName"), authNameField: $("#authNameField"), authPassword: $("#authPassword"),
+  authError: $("#authError"), authSubmit: $("#authSubmit"), authSwitch: $("#authSwitch"),
+  authSwitchText: $("#authSwitchText"), authSignedIn: $("#authSignedIn"), authUserName: $("#authUserName"),
+  authSyncLine: $("#authSyncLine"), authLogout: $("#authLogout"), sharedTips: $("#sharedTips"),
 };
 
 const mediaUrl = (path) => `${MEDIA_ROOT}${String(path || "").replace(/^\.\//, "")}`;
@@ -290,10 +296,33 @@ function renderTips(exerciseId) {
         <p>${esc(tip.text)}</p>
         <div class="tip-meta">
           <span>${tip.source ? esc(tip.source) + " · " : ""}${tip.createdAt.slice(0, 10)}</span>
-          <button class="text-button danger" data-action="delete-tip" type="button">删除</button>
+          <span class="tip-actions">
+            <button class="text-button ${tip.visibility === "public" ? "is-public" : ""}" data-action="toggle-visibility" type="button">
+              ${tip.visibility === "public" ? "已公开" : "公开这条"}
+            </button>
+            <button class="text-button danger" data-action="delete-tip" type="button">删除</button>
+          </span>
         </div>
       </li>`).join("")
     : `<li class="tip empty">还没有记录。上完课把教练纠正你的点写下来，下次自己练就有据可依。</li>`;
+  renderSharedTips(exerciseId);
+}
+
+/* 别人公开的技巧。这是把站分享出去之后最有价值的部分——
+ * 动作库到处都有，「我的私教是这么纠正我的」别处没有。 */
+async function renderSharedTips(exerciseId) {
+  elements.sharedTips.hidden = true;
+  const shared = (await store.publicTips(exerciseId)).filter((tip) => tip.body?.text);
+  // 请求回来时用户可能已经翻到别的动作了
+  if (exerciseId !== state.selectedId || !shared.length) return;
+  elements.sharedTips.hidden = false;
+  elements.sharedTips.innerHTML = `
+    <p class="shared-head">其他人的经验 · ${shared.length}</p>
+    ${shared.map((tip) => `
+      <div class="shared-tip">
+        <p>${esc(tip.body.text)}</p>
+        <span>${esc(tip.author)}${tip.body.source ? " · 来自 " + esc(tip.body.source) : ""}</span>
+      </div>`).join("")}`;
 }
 
 function renderLastPerformance(exerciseId) {
@@ -551,9 +580,16 @@ elements.addTipButton.addEventListener("click", () => {
   flashStatus("已记下");
 });
 elements.tipList.addEventListener("click", (event) => {
-  const button = event.target.closest('[data-action="delete-tip"]');
+  const button = event.target.closest("[data-action]");
   if (!button) return;
-  store.deleteTip(button.closest("[data-tip]").dataset.tip);
+  const tipId = button.closest("[data-tip]").dataset.tip;
+  if (button.dataset.action === "delete-tip") {
+    store.deleteTip(tipId);
+  } else if (button.dataset.action === "toggle-visibility") {
+    if (!store.user) return openAuth("login", "公开技巧需要先登录，别人才知道这条是谁写的。");
+    const tip = store.tipsFor(state.selectedId).find((item) => item.id === tipId);
+    store.setVisibility("tip", tipId, tip?.visibility === "public" ? "private" : "public");
+  }
   renderTips(state.selectedId);
 });
 elements.addToSessionButton.addEventListener("click", () => {
@@ -696,4 +732,94 @@ elements.importFile.addEventListener("change", async (event) => {
 });
 window.addEventListener("store:error", (event) => alert(event.detail));
 
+/* ---- 账号与同步 ---- */
+
+let authMode = "login";
+
+function openAuth(mode = "login", intro = "") {
+  authMode = mode;
+  elements.authOverlay.hidden = false;
+  const signedIn = Boolean(store.user);
+  elements.authForm.hidden = signedIn;
+  elements.authSignedIn.hidden = !signedIn;
+  $(".auth-switch").hidden = signedIn;
+  elements.authError.hidden = true;
+  if (signedIn) {
+    elements.authTitle.textContent = "我的账号";
+    elements.authIntro.textContent = "训练记录会在后台自动同步。";
+    elements.authUserName.textContent = store.user.displayName || store.user.email;
+    return;
+  }
+  const isRegister = mode === "register";
+  elements.authTitle.textContent = isRegister ? "注册" : "登录";
+  elements.authSubmit.textContent = isRegister ? "注册并同步" : "登录";
+  elements.authNameField.hidden = !isRegister;
+  elements.authPassword.autocomplete = isRegister ? "new-password" : "current-password";
+  elements.authSwitchText.textContent = isRegister ? "已经有账号了？" : "还没有账号？";
+  elements.authSwitch.textContent = isRegister ? "去登录" : "注册一个";
+  elements.authIntro.textContent = intro
+    || (isRegister
+      ? "注册后这台设备上已有的记录会一并上传，不会丢。"
+      : "登录后训练记录会同步到云端，换设备也不会丢。");
+  elements.authEmail.focus();
+}
+
+const closeAuth = () => { elements.authOverlay.hidden = true; };
+
+elements.accountButton.addEventListener("click", () => openAuth(store.user ? "account" : "login"));
+elements.authClose.addEventListener("click", closeAuth);
+elements.authOverlay.addEventListener("click", (event) => { if (event.target === elements.authOverlay) closeAuth(); });
+elements.authSwitch.addEventListener("click", () => openAuth(authMode === "register" ? "login" : "register"));
+
+elements.authForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  elements.authError.hidden = true;
+  elements.authSubmit.disabled = true;
+  const original = elements.authSubmit.textContent;
+  elements.authSubmit.textContent = "处理中…";
+  try {
+    const email = elements.authEmail.value.trim();
+    const password = elements.authPassword.value;
+    if (authMode === "register") await store.auth.register(email, password, elements.authName.value.trim());
+    else await store.auth.login(email, password);
+    closeAuth();
+    elements.authForm.reset();
+    renderSessions();
+    renderPlans();
+  } catch (error) {
+    elements.authError.textContent = error.message;
+    elements.authError.hidden = false;
+  } finally {
+    elements.authSubmit.disabled = false;
+    elements.authSubmit.textContent = original;
+  }
+});
+
+elements.authLogout.addEventListener("click", async () => {
+  await store.auth.logout();
+  closeAuth();
+});
+
+const syncLabels = { syncing: "同步中…", idle: "已同步", error: "同步失败" };
+window.addEventListener("auth:changed", (event) => {
+  const user = event.detail;
+  elements.accountButton.textContent = user ? (user.displayName || user.email) : "登录";
+  elements.accountButton.classList.toggle("signed-in", Boolean(user));
+});
+window.addEventListener("sync:state", (event) => {
+  elements.accountButton.dataset.sync = event.detail;
+  if (!elements.authSignedIn.hidden) elements.authSyncLine.textContent = syncLabels[event.detail] || "";
+});
+window.addEventListener("sync:error", (event) => {
+  if (!elements.authSignedIn.hidden) elements.authSyncLine.textContent = `同步失败：${event.detail}`;
+});
+// 服务端合并回来的数据要立刻反映到界面上
+window.addEventListener("store:changed", () => {
+  renderSessions();
+  renderPlans();
+  if (state.selectedId && !elements.detailOverlay.hidden) renderTips(state.selectedId);
+});
+document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !elements.authOverlay.hidden) closeAuth(); });
+
 loadExercises();
+store.auth.me();

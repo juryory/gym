@@ -1,0 +1,14 @@
+{
+  "name": "lianlian-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "练练后端：账号、云同步、公开分享。零外部依赖，只用 Node 内置模块。",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
