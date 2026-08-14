@@ -1,7 +1,7 @@
 const DATA_URL = "data/exercises.json";
 // 素材默认同源加载。若改用对象存储（腾讯云 COS 等），把 assets/ 目录整个上传到
 // 存储桶根目录，然后把这里换成桶域名，例如 "https://your-bucket.cos.ap-guangzhou.myqcloud.com/"。
-const MEDIA_ROOT = "assets/";
+const MEDIA_ROOT = "https://gym-1386242129.cos.ap-beijing.myqcloud.com/";
 const MAX_VISIBLE_RESULTS = 160;
 
 const equipmentNames = {
@@ -242,7 +242,7 @@ function renderExerciseList() {
   elements.exerciseList.innerHTML = visible.map((item) => `
     <button class="exercise-card ${item.id === state.selectedId ? "active" : ""}" data-id="${item.id}">
       <span class="card-media">
-        <img src="${mediaUrl(item.image)}" alt="" loading="lazy" />
+        <img src="${mediaUrl(item.image)}" alt="" loading="lazy" data-gif="${item.gif_url ? mediaUrl(item.gif_url) : ''}" />
         <span class="card-equipment">${localName(item.equipment, equipmentNames)}</span>
       </span>
       <span class="card-body">
@@ -540,6 +540,53 @@ function renderPlanCard(plan) {
         </div>` : ""}
     </article>`;
 }
+
+// Desktop: hover to show animated WebP, leave to revert
+let hoverCard = null;
+let hoverTimer = null;
+elements.exerciseList.addEventListener("mouseover", (event) => {
+  const card = event.target.closest("[data-id]");
+  if (!card || card === hoverCard) return;
+  // Leave previous card if any
+  if (hoverCard && hoverCard !== card) {
+    const prevImg = hoverCard.querySelector("img");
+    if (prevImg && prevImg.dataset.static) prevImg.src = prevImg.dataset.static;
+  }
+  hoverCard = card;
+  const img = card.querySelector("img");
+  if (!img || !img.dataset.gif) return;
+  if (!img.dataset.static) img.dataset.static = img.src;
+  clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => { img.src = img.dataset.gif; }, 200);
+});
+elements.exerciseList.addEventListener("mouseout", (event) => {
+  const card = event.target.closest("[data-id]");
+  if (!card) return;
+  const related = event.relatedTarget;
+  if (related && card.contains(related)) return; // still inside card
+  const img = card.querySelector("img");
+  if (!img || !img.dataset.static) return;
+  clearTimeout(hoverTimer);
+  img.src = img.dataset.static;
+  hoverCard = null;
+});
+
+// Mobile: touch to toggle animation
+let touchImg = null;
+elements.exerciseList.addEventListener("touchstart", (event) => {
+  const card = event.target.closest("[data-id]");
+  if (!card) return;
+  const img = card.querySelector("img");
+  if (!img || !img.dataset.gif) return;
+  touchImg = img;
+  if (!img.dataset.static) img.dataset.static = img.src;
+  img.src = img.dataset.gif;
+}, { passive: true });
+elements.exerciseList.addEventListener("touchend", (event) => {
+  if (!touchImg) return;
+  if (touchImg.dataset.static) touchImg.src = touchImg.dataset.static;
+  touchImg = null;
+}, { passive: true });
 
 elements.exerciseList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-id]");
