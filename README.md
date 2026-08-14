@@ -22,12 +22,12 @@ python -m http.server 4173
 
 ## 数据存在哪
 
-目前全部存在当前浏览器的 `localStorage` 里（键名 `lianlian:v1`）。这意味着：
+**本地优先**：所有写入先落当前浏览器的 `localStorage`（键名 `lianlian:v1`）并立刻返回，
+所以断网也能记录。登录之后，后台会把数据同步到自建后端（见「后端：账号与云同步」）。
 
-> **换手机、清缓存、或 iOS Safari 长期不访问自动清理，记录就没了。** 页脚有「导出备份」，
-> 建议定期导出。导入是按 id 合并，同一份备份重复导入不会产生重复记录。
-
-云端同步和多人功能见下面的「后续规划」。
+> **没登录时数据只在这一个浏览器里**——换手机、清缓存、或 iOS Safari 长期不访问自动
+> 清理，记录就没了。页脚有「导出备份」可以随时导出；导入按 id 合并，同一份备份重复
+> 导入不会产生重复记录。
 
 ### 数据结构
 
@@ -89,54 +89,134 @@ DB_FILE=/www/lianlian-data/gym.db PORT=3000 node server.js
 隐私边界在服务端强制，不信任客户端：训练记录（含个人重量数据）无论客户端传什么
 `visibility` 都会被改写成 `private`，只有技巧和计划能公开。
 
-## 部署（宝塔面板）
+## 部署
 
-### 1. 静态站
+单机部署：Nginx 伺服静态文件并把 `/api` 反代给 Node 进程，SQLite 落在网站根目录之外。
+下面的配置是完整可执行的，不依赖任何面板；如果用宝塔/aaPanel，对应到「Node 项目」
+「反向代理」「SSL」三个功能，配置内容一致。
 
-站点根目录指向仓库。可以先只部署静态部分——**后端没起来时整站照常可用**，只是没有
-登录和同步。
+### 前置条件
 
-### 2. Node 后端
+- **Node ≥ 22.5**（`node:sqlite` 从这个版本起可用）。检查：`node -v`
+- Nginx
+- 不需要 `npm install`，后端零外部依赖
 
-宝塔「软件商店」装 **Node 版本管理器**，选 22.5 以上的版本。然后「网站 → Node 项目 →
-添加 Node 项目」：
+### 目录约定
 
-- 项目目录：仓库的 `server/` 子目录
-- 启动方式：`node server.js`（或 `npm start`）
-- 端口：`3000`
-- 环境变量：`DB_FILE=/www/lianlian-data/gym.db`
+下面的示例用这两个路径，按实际情况替换：
 
-数据库目录要**建在网站根目录之外**，并给运行用户写权限。
+| 用途 | 路径 |
+| --- | --- |
+| 仓库检出位置（同时是网站根目录） | `/www/wwwroot/gym` |
+| 数据目录（**必须在网站根目录之外**） | `/www/lianlian-data` |
 
-### 3. 反向代理
+> **数据库文件绝不能放在网站根目录里。** 网站根目录就是仓库根目录，放进去意味着
+> `https://你的域名/data/gym.db` 能被任何人下载，里面是所有用户的密码哈希和全部训练
+> 记录。默认路径已经指到仓库外，配置 `DB_FILE` 时不要改回仓库内。
 
-「网站 → 设置 → 反向代理」，添加：
-
-- 代理名称：`api`
-- 目标 URL：`http://127.0.0.1:3000`
-- 发送域名：`$host`
-- 代理目录：`/api`
-
-登录 cookie 的 `Secure` 标志依赖 `X-Forwarded-Proto`，确认反代配置里有这一行
-（宝塔默认模板通常带，没有就手动加）：
-
-```nginx
-proxy_set_header X-Forwarded-Proto $scheme;
+```bash
+mkdir -p /www/lianlian-data
+chown www-data:www-data /www/lianlian-data
 ```
 
-### 4. HTTPS
+### systemd 服务
 
-「网站 → SSL」签一张 Let's Encrypt 证书并开启强制 HTTPS。登录令牌走 cookie，明文 HTTP
-下会被中间人截取。
+写入 `/etc/systemd/system/lianlian.service`：
 
-### 5. 备份
+```ini
+[Unit]
+Description=lianlian training log API
+After=network.target
 
-数据库就是一个文件，宝塔「计划任务」加一条 shell 定时备份即可。SQLite 开了 WAL，
-**热备份要用 `.backup` 而不是直接 `cp`**，否则可能拷到不一致的状态：
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/www/wwwroot/gym/server
+ExecStart=/usr/bin/node server.js
+Environment=PORT=3000
+Environment=BIND=127.0.0.1
+Environment=DB_FILE=/www/lianlian-data/gym.db
+Restart=always
+RestartSec=3
+# 服务只需要写数据目录，其余文件系统只读
+ProtectSystem=strict
+ReadWritePaths=/www/lianlian-data
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable --now lianlian
+systemctl status lianlian
+curl -s localhost:3000/api/me    # 未登录时应返回 null
+```
+
+### Nginx
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name gym.juryory.com;
+
+    root /www/wwwroot/gym;
+    index index.html;
+
+    # 数据库、服务端源码、构建脚本都不该被伺服出去
+    location ~ \.(db|db-wal|db-shm)$ { deny all; }
+    location ^~ /server/ { deny all; }
+    location ^~ /tools/  { deny all; }
+    location ^~ /.git/   { deny all; }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # 登录 cookie 的 Secure 标志依赖这一行
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+`_headers` 里的缓存策略是给 Cloudflare Pages 用的，Nginx 不读它。要等价效果就加：
+
+```nginx
+location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }
+location /data/   { expires 1h; }
+```
+
+### HTTPS
+
+登录令牌走 cookie，明文 HTTP 下会被中间人截取，**必须启用 HTTPS 并强制跳转**。
+Let's Encrypt：`certbot --nginx -d gym.juryory.com`
+
+### 备份
+
+数据库就是一个文件。SQLite 开了 WAL，**热备份要用 `.backup` 而不是直接 `cp`**，
+否则可能拷到不一致的状态：
 
 ```bash
 sqlite3 /www/lianlian-data/gym.db ".backup '/www/backup/gym-$(date +\%F).db'"
 ```
+
+加进 crontab 每天跑一次即可。
+
+### 更新
+
+```bash
+cd /www/wwwroot/gym && git pull && systemctl restart lianlian
+```
+
+静态文件改动 `git pull` 即生效；只有 `server/` 下的改动才需要重启。
 
 ## 素材放腾讯云 COS
 
@@ -174,15 +254,6 @@ python3 tools/build-assets.py --source /tmp/exercises-dataset
 
 脚本会把 GIF 转成 animated WebP（约为原体积的三分之一，保持 180×180），并把上游 16.6 MB
 的十语种数据裁到 1.4 MB。
-
-### 改用对象存储
-
-若不想让素材随仓库分发，把 `assets/` 目录整个上传到存储桶根目录，再把 `app.js` 顶部的
-`MEDIA_ROOT` 换成桶域名即可，其余代码无需改动：
-
-```js
-const MEDIA_ROOT = "https://your-bucket.cos.ap-guangzhou.myqcloud.com/";
-```
 
 ### 版权
 
