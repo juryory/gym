@@ -571,29 +571,24 @@ elements.exerciseList.addEventListener("mouseout", (event) => {
   hoverCard = null;
 });
 
-// Mobile: touch to toggle animation
-let touchImg = null;
-elements.exerciseList.addEventListener("touchstart", (event) => {
-  const card = event.target.closest("[data-id]");
-  if (!card) return;
-  const img = card.querySelector("img");
-  if (!img || !img.dataset.gif) return;
-  touchImg = img;
-  if (!img.dataset.static) img.dataset.static = img.src;
-  img.src = img.dataset.gif;
-}, { passive: true });
-elements.exerciseList.addEventListener("touchend", (event) => {
-  if (!touchImg) return;
-  if (touchImg.dataset.static) touchImg.src = touchImg.dataset.static;
-  touchImg = null;
-}, { passive: true });
-
+// Mobile: tap on card image to toggle animated GIF / static JPEG
+// Desktop: hover behavior is handled above by mouseover/mouseout
 elements.exerciseList.addEventListener("click", (event) => {
+  const img = event.target.closest(".card-media img");
+  if (img && img.dataset.gif) {
+    // On touch devices, tapping the image toggles animation
+    if ('ontouchstart' in window) {
+      event.preventDefault();
+      if (!img.dataset.static) img.dataset.static = img.src;
+      img.src = (img.src === img.dataset.static) ? img.dataset.gif : img.dataset.static;
+      return;
+    }
+  }
+  // Clicking on card body opens detail or picks exercise
   const button = event.target.closest("[data-id]");
   if (!button) return;
   const exerciseId = button.dataset.id;
   if (!state.picker) return selectExercise(exerciseId);
-  // 挑选模式下连点多个动作，不打断节奏
   if (state.picker.type === "plan") store.addPlanEntry(state.picker.id, exerciseId);
   else store.addEntry(state.picker.id, exerciseId);
   button.classList.add("just-added");
