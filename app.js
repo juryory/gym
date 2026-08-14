@@ -242,7 +242,8 @@ function renderExerciseList() {
   elements.exerciseList.innerHTML = visible.map((item) => `
     <button class="exercise-card ${item.id === state.selectedId ? "active" : ""}" data-id="${item.id}">
       <span class="card-media">
-        <img src="${mediaUrl(item.image)}" alt="" loading="lazy" data-gif="${item.gif_url ? mediaUrl(item.gif_url) : ''}" />
+        <img src="${mediaUrl(item.image)}" alt="" loading="lazy"${item.gif_url ? ` data-gif="${mediaUrl(item.gif_url)}"` : ''} />
+        ${item.gif_url ? '<span class="play-btn"></span>' : ''}
         <span class="card-equipment">${localName(item.equipment, equipmentNames)}</span>
       </span>
       <span class="card-body">
@@ -574,15 +575,21 @@ elements.exerciseList.addEventListener("mouseout", (event) => {
 // Mobile: tap on card image to toggle animated GIF / static JPEG
 // Desktop: hover behavior is handled above by mouseover/mouseout
 elements.exerciseList.addEventListener("click", (event) => {
-  const img = event.target.closest(".card-media img");
-  if (img && img.dataset.gif) {
-    // On touch devices, tapping the image toggles animation
-    if ('ontouchstart' in window) {
-      event.preventDefault();
-      if (!img.dataset.static) img.dataset.static = img.src;
-      img.src = (img.src === img.dataset.static) ? img.dataset.gif : img.dataset.static;
-      return;
+  // Play button toggle on both mobile & desktop
+  const playBtn = event.target.closest(".play-btn");
+  if (playBtn) {
+    const img = playBtn.closest(".card-media").querySelector("img");
+    if (!img || !img.dataset.gif) return;
+    event.preventDefault();
+    if (!img.dataset.static) img.dataset.static = img.src;
+    if (img.src === img.dataset.static) {
+      img.src = img.dataset.gif;
+      playBtn.classList.add("playing");
+    } else {
+      img.src = img.dataset.static;
+      playBtn.classList.remove("playing");
     }
+    return;
   }
   // Clicking on card body opens detail or picks exercise
   const button = event.target.closest("[data-id]");
